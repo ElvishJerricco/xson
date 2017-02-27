@@ -29,6 +29,7 @@ library
   exposed-modules:   Lib
   build-depends:     base >= 4.8 && < 5
                    , bytestring
+                   , scientific
 
 benchmark xson-benchmark-criterion
   type:              exitcode-stdio-1.0

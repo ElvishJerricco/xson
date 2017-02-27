@@ -1,11 +1,13 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ViewPatterns      #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Lib where
 
 import           Data.ByteString       (ByteString)
 import qualified Data.ByteString       as S
 import           Data.Functor.Identity
+import           Data.Scientific
 import           Data.Word
 
 data Token
@@ -16,16 +18,12 @@ data Token
   | Comma
   | OpenArray
   | CloseArray
-  | Number Double
+  | Number Scientific
   | Boolean Bool
   | Null
   deriving (Show, Ord, Eq)
 
-tokenize
-  :: Applicative f
-  => (Token -> f ())
-  -> ByteString
-  -> f ()
+tokenize :: forall f. Applicative f => (Token -> f ()) -> ByteString -> f ()
 tokenize handleToken str = go 0
  where
   go (skipSpaces str -> index) = case S.uncons (S.drop index str) of
@@ -57,21 +55,25 @@ tokenize handleToken str = go 0
   isEscaped index =
     let x = S.index str (index - 1)
     in  x == escapeSlash && not (isEscaped (index - 1))
+  number :: (Integer -> Integer) -> Int -> f ()
   number sign index =
     let (int, index') = parseNumber str index
     in decimal sign int index'
+  decimal :: (Integer -> Integer) -> Integer -> Int -> f ()
   decimal sign int index = case S.uncons (S.drop index str) of
     Just (x, _)
       | x == period ->
-        let (dec, index') = parseDecimal str (index + 1)
-        in expon (sign (int + dec)) index'
-    _ -> expon (sign int) index
-  expon n index = case S.uncons (S.drop index str) of
+        let (dec, index') = parseNumber str (index + 1)
+            e = index' - index
+        in expon (sign (int * 10^e + dec)) e index'
+    _ -> expon (sign int) 0 index
+  expon :: Integer -> Int -> Int -> f ()
+  expon n e index = case S.uncons (S.drop index str) of
     Just (x, _)
       | isExponent x ->
-        let (e, index') = parseNumber str (index + 1) :: (Integer, Int)
-        in handleToken (Number (n * fromInteger (10 ^ e))) *> go index'
-    _ -> handleToken (Number n) *> go index
+        let (e', index') = parseNumber str (index + 1) :: (Int, Int)
+        in handleToken (Number (scientific n (e + e'))) *> go index'
+    _ -> handleToken (Number (scientific n e)) *> go index
 {-# INLINE tokenize #-}
 {-# SPECIALIZE tokenize :: (Token -> Identity ()) -> ByteString -> Identity () #-}
 {-# SPECIALIZE tokenize :: (Token -> IO ()) -> ByteString -> IO () #-}
@@ -114,15 +116,6 @@ parseNumber str = go 0
     Just (x, _) | isNumberChar x -> go (n * 10 + digitToNum x) (index + 1)
     _                            -> (n, index)
 {-# INLINE parseNumber #-}
-
-parseDecimal :: Fractional a => ByteString -> Int -> (a, Int)
-parseDecimal str = go 0 10
- where
-  go n den index = case S.uncons (S.drop index str) of
-    Just (x, _) | isNumberChar x ->
-      go (n + (digitToNum x / den)) (den * 10) (index + 1)
-    _ -> (n, index)
-{-# INLINE parseDecimal #-}
 
 --------------------------------------------------------------------------------
 -- Character types
