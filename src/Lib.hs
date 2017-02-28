@@ -18,6 +18,9 @@ import qualified Data.Text.Encoding         as Text
 import qualified Data.Vector                as Vector
 import           Data.Word
 
+import           Control.Monad.ST
+import           Data.STRef.Strict
+
 data Token
   = OpenObject
   | CloseObject
@@ -327,3 +330,10 @@ doneArray = Aeson.Array . Vector.fromList
 parse :: ByteString -> Value
 parse str = let Done v = execState (tokenize parseTokens str) Start in v
 {-# NOINLINE parse #-}
+
+parseST :: ByteString -> Value
+parseST str = runST $ do
+  ref <- newSTRef Start
+  tokenize (modifySTRef' ref . nextPState) str
+  Done v <- readSTRef ref
+  return v
