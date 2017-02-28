@@ -90,6 +90,7 @@ tokenize handleToken str = go 0
 {-# SPECIALIZE tokenize :: (Token -> Identity ()) -> ByteString -> Identity () #-}
 {-# SPECIALIZE tokenize :: (Token -> IO ()) -> ByteString -> IO () #-}
 {-# SPECIALIZE tokenize :: (Token -> State s ()) -> ByteString -> State s () #-}
+{-# SPECIALIZE tokenize :: (Token -> ST s ()) -> ByteString -> ST s () #-}
 
 tokenize' :: ByteString -> ()
 tokenize' str =
