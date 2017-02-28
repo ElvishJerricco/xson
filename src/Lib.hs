@@ -73,8 +73,8 @@ tokenize handleToken str = go 0
     Just (x, _)
       | x == period ->
         let (dec, index') = parseNumber str (index + 1)
-            e = index' - index
-        in expon (sign (int * 10^e + dec)) e index'
+            e = index' - (index + 1)
+        in expon (sign (int * 10^e + dec)) (-e) index'
     _ -> expon (sign int) 0 index
   expon :: Integer -> Int -> Int -> f ()
   expon n e index = case S.uncons (S.drop index str) of
