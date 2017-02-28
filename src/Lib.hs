@@ -115,6 +115,8 @@ substring :: ByteString -> Int -> Int -> ByteString
 substring s start end = S.take (end - start) (S.drop start s)
 {-# INLINE substring #-}
 
+-- TODO: Definitely look into this:
+-- http://www.serpentine.com/blog/2015/05/13/sometimes-the-old-ways-are-the-best/
 escaped :: ByteString -> ByteString
 escaped str = case S.elemIndex escapeSlash str of
   Nothing -> str
