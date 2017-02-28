@@ -12,8 +12,8 @@ main = do
   allSets <- ByteString.readFile "AllSetsArray-x.json"
   mainWith $ do
     func "xson-aer"        parse           aer
-    func "xson-allSets"    parse           allSets
     func "xson-aer-ST"     parseST         aer
-    func "xson-allSets-ST" parseST         allSets
     func "aeson-aer"       (decode @Value) (Lazy.fromStrict aer)
+    func "xson-allSets"    parse           allSets
+    func "xson-allSets-ST" parseST         allSets
     func "aeson-allSets"   (decode @Value) (Lazy.fromStrict allSets)
