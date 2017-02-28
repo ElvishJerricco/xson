@@ -58,7 +58,7 @@ tokenize handleToken str = go 0
     Nothing     -> error "close"
     Just index' -> if isEscaped index'
       then findClosingQuote start (index' + 1)
-      else handleToken (String (substring str (start + 1) index'))
+      else handleToken (String (escaped $ substring str (start + 1) index'))
         *> go (index' + 1)
   -- TODO: Maybe make this tail call itself?
   isEscaped index =
@@ -111,6 +111,26 @@ skipSpaces str i = case S.uncons (S.drop i str) of
 substring :: ByteString -> Int -> Int -> ByteString
 substring s start end = S.take (end - start) (S.drop start s)
 {-# INLINE substring #-}
+
+escaped :: ByteString -> ByteString
+escaped str = case S.elemIndex escapeSlash str of
+  Nothing -> str
+  Just index ->
+    let preStr = substring str 0 index
+    in  case S.uncons (S.drop (index + 1) str) of
+          Just (x, str')
+            | x == doubleQuote -> preStr `S.append` (doubleQuote `S.cons` escaped str')
+            | x == escapeSlash -> preStr `S.append` (escapeSlash `S.cons` escaped str')
+            | x == forwardSlash -> preStr `S.append` (forwardSlash `S.cons` escaped str')
+            | x == bChar -> preStr `S.append` (backspace `S.cons` escaped str')
+            | x == fChar -> preStr `S.append` (formFeed `S.cons` escaped str')
+            | x == nChar -> preStr `S.append` (newLine `S.cons` escaped str')
+            | x == rChar -> preStr `S.append` (carriageReturn `S.cons` escaped str')
+            | x == tChar -> preStr `S.append` (tabChar `S.cons` escaped str')
+            | x == uChar -> error "TODO: Implement unicode escapes"
+            | otherwise -> preStr `S.append` (x `S.cons` escaped str')
+          _ -> error "Invalid escape slash"
+{-# INLINE escaped #-}
 
 -- | Get index of an element starting from offset.
 elemIndexFrom :: Word8 -> ByteString -> Int -> Maybe Int
@@ -177,6 +197,42 @@ openBrace = S.index "{" 0
 
 closeBrace :: Word8
 closeBrace = S.index "}" 0
+
+forwardSlash :: Word8
+forwardSlash = S.index "/" 0
+
+bChar :: Word8
+bChar = S.index "b" 0
+
+backspace :: Word8
+backspace = S.index "\b" 0
+
+fChar :: Word8
+fChar = S.index "f" 0
+
+formFeed :: Word8
+formFeed = S.index "\f" 0
+
+nChar :: Word8
+nChar = S.index "n" 0
+
+newLine :: Word8
+newLine = S.index "\n" 0
+
+rChar :: Word8
+rChar = S.index "r" 0
+
+carriageReturn :: Word8
+carriageReturn = S.index "\r" 0
+
+tChar :: Word8
+tChar = S.index "t" 0
+
+tabChar :: Word8
+tabChar = S.index "\t" 0
+
+uChar :: Word8
+uChar = S.index "u" 0
 
 --------------------------------------------------------------------------------
 
