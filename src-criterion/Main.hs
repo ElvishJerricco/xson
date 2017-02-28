@@ -1,19 +1,19 @@
 {-# LANGUAGE TypeApplications #-}
 
-import Criterion
-import Criterion.Main
-import qualified Data.ByteString as ByteString
+import           Criterion
+import           Criterion.Main
+import           Data.Aeson
+import qualified Data.ByteString      as ByteString
 import qualified Data.ByteString.Lazy as Lazy
-import Lib
-import Data.Aeson
+import           Lib
 
 main :: IO ()
 main = do
-  aer <- ByteString.readFile "AER-x.json"
+  aer     <- ByteString.readFile "AER-x.json"
   allSets <- ByteString.readFile "AllSetsArray-x.json"
   defaultMain
-    [ bench "xson-aer" (whnf tokenize' aer)
-    , bench "xson-allSets" (whnf tokenize' allSets)
-    , bench "aeson-aer" (nf (decode @Value) (Lazy.fromStrict aer))
+    [ bench "xson-aer"      (nf parse aer)
+    , bench "xson-allSets"  (nf parse allSets)
+    , bench "aeson-aer"     (nf (decode @Value) (Lazy.fromStrict aer))
     , bench "aeson-allSets" (nf (decode @Value) (Lazy.fromStrict allSets))
     ]

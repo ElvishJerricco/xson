@@ -1,13 +1,21 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE ViewPatterns      #-}
+{-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE ViewPatterns        #-}
 
 module Lib where
 
-import           Data.ByteString       (ByteString)
-import qualified Data.ByteString       as S
+import           Control.Monad.State.Strict
+import           Data.Aeson                 (Value)
+import qualified Data.Aeson                 as Aeson
+import           Data.ByteString            (ByteString)
+import qualified Data.ByteString            as S
 import           Data.Functor.Identity
+import           Data.HashMap.Lazy          (HashMap)
+import qualified Data.HashMap.Lazy          as HashMap
 import           Data.Scientific
+import           Data.Text                  (Text)
+import qualified Data.Text.Encoding         as Text
+import qualified Data.Vector                as Vector
 import           Data.Word
 
 data Token
@@ -37,6 +45,7 @@ tokenize handleToken str = go 0
       | x == colon -> handleToken Colon *> go (index + 1)
       | x == minusChar -> number negate (index + 1)
       | isNumberChar x -> number id index
+        -- TODO: Replace these prefix checks with manually unrolled loops.
       | S.isPrefixOf "true" (S.drop index str) -> handleToken (Boolean True) *> go (index + 4)
       | S.isPrefixOf "false" (S.drop index str) -> handleToken (Boolean False) *> go (index + 4)
       | S.isPrefixOf "null" (S.drop index str) -> handleToken Null *> go (index + 4)
@@ -77,6 +86,7 @@ tokenize handleToken str = go 0
 {-# INLINE tokenize #-}
 {-# SPECIALIZE tokenize :: (Token -> Identity ()) -> ByteString -> Identity () #-}
 {-# SPECIALIZE tokenize :: (Token -> IO ()) -> ByteString -> IO () #-}
+{-# SPECIALIZE tokenize :: (Token -> State s ()) -> ByteString -> State s () #-}
 
 tokenize' :: ByteString -> ()
 tokenize' str =
@@ -169,3 +179,97 @@ openBrace = 123
 
 closeBrace :: Word8
 closeBrace = 125
+
+--------------------------------------------------------------------------------
+
+type ObjectDone = HashMap Text Value -> PState
+
+data ObjectState
+  = ObjectKey
+  | ObjectColon !Text
+  | ObjectValue !Text
+  | ObjectComma
+
+type ArrayDone = [Value] -> PState
+
+data ArrayState
+  = ArrayValue
+  | ArrayComma
+
+data PState
+  = Start
+  | Done !Value
+  | PArray !ArrayState !ArrayDone
+  | PObject !ObjectState !ObjectDone
+
+parseTokens :: Token -> State PState ()
+parseTokens = modify' . nextPState
+
+nextPState :: Token -> PState -> PState
+nextPState tok Start                            = startPState tok
+nextPState _   (Done _                        ) = error "Done"
+nextPState tok (PArray  ArrayValue        done) = nextArrayValue done tok
+nextPState tok (PArray  ArrayComma        done) = nextArrayComma done tok
+nextPState tok (PObject ObjectKey         done) = nextObjectKey done tok
+nextPState tok (PObject (ObjectColon key) done) = nextObjectColon done key tok
+nextPState tok (PObject (ObjectValue key) done) = nextObjectValue done key tok
+nextPState tok (PObject ObjectComma       done) = nextObjectComma done tok
+
+startPState :: Token -> PState
+startPState OpenArray  = PArray ArrayValue (Done . doneArray)
+startPState OpenObject = PObject ObjectKey (Done . Aeson.Object)
+startPState (primVal -> Just v) = Done v
+startPState _ = error "Expected value"
+
+nextArrayValue :: ArrayDone -> Token -> PState
+nextArrayValue done OpenArray =
+  PArray ArrayValue $ \v -> PArray ArrayComma (done . (doneArray v:))
+nextArrayValue done OpenObject =
+  PObject ObjectKey $ \v -> PArray ArrayComma (done . (Aeson.Object v:))
+nextArrayValue done CloseArray = done []
+nextArrayValue done (primVal -> Just v) = PArray ArrayComma (done . (v:))
+nextArrayValue _ _ = error "Expected value"
+
+nextArrayComma :: ArrayDone -> Token -> PState
+nextArrayComma done Comma      = PArray ArrayValue done
+nextArrayComma done CloseArray = done []
+nextArrayComma _    _          = error "Expected comma"
+
+nextObjectKey :: ObjectDone -> Token -> PState
+nextObjectKey done (String str) =
+  PObject (ObjectColon (Text.decodeUtf8 str)) done
+nextObjectKey done CloseObject = done HashMap.empty
+nextObjectKey _    _           = error "Expected object key or close"
+
+nextObjectColon :: ObjectDone -> Text -> Token -> PState
+nextObjectColon done key Colon = PObject (ObjectValue key) done
+nextObjectColon _    _   _     = error "Expected colon"
+
+nextObjectValue :: ObjectDone -> Text -> Token -> PState
+nextObjectValue done key OpenArray = PArray ArrayValue
+  $ \v -> PObject ObjectComma (done . HashMap.insert key (doneArray v))
+nextObjectValue done key OpenObject = PObject ObjectKey
+  $ \v -> PObject ObjectComma (done . HashMap.insert key (Aeson.Object v))
+nextObjectValue done key (primVal -> Just v) = PObject ObjectComma (done . HashMap.insert key v)
+nextObjectValue _ _ _ = error "Expected value"
+
+nextObjectComma :: ObjectDone -> Token -> PState
+nextObjectComma done Comma       = PObject ObjectKey done
+nextObjectComma done CloseObject = done HashMap.empty
+nextObjectComma _    _           = error "Expected comma or close object"
+
+primVal :: Token -> Maybe Value
+primVal (String  str) = Just (Aeson.String (Text.decodeUtf8 str))
+primVal (Number  n  ) = Just (Aeson.Number n)
+primVal (Boolean b  ) = Just (Aeson.Bool b)
+primVal Null          = Just Aeson.Null
+primVal _             = Nothing
+
+doneArray :: [Value] -> Value
+doneArray = Aeson.Array . Vector.fromList
+
+--------------------------------------------------------------------------------
+
+parse :: ByteString -> Value
+parse str = let Done v = execState (tokenize parseTokens str) Start in v
+{-# NOINLINE parse #-}

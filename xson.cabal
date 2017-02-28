@@ -30,6 +30,11 @@ library
   build-depends:     base >= 4.8 && < 5
                    , bytestring
                    , scientific
+                   , unordered-containers
+                   , text
+                   , vector
+                   , aeson
+                   , mtl
 
 benchmark xson-benchmark-criterion
   type:              exitcode-stdio-1.0
