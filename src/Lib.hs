@@ -149,36 +149,34 @@ isExponent x = x == 69 || x == 101
 {-# INLINE isExponent #-}
 
 minusChar :: Word8
-minusChar = 45
+minusChar = S.index "-" 0
 
 period :: Word8
-period = 46
+period = S.index "." 0
 
 doubleQuote :: Word8
-doubleQuote = 34
+doubleQuote = S.index "\"" 0
 
 comma :: Word8
-comma = 44
+comma = S.index "," 0
 
 colon :: Word8
-colon = 58
+colon = S.index ":" 0
 
 escapeSlash :: Word8
-escapeSlash = 92
+escapeSlash = S.index "\\" 0
 
--- [
 openBracket :: Word8
-openBracket = 91
+openBracket = S.index "[" 0
 
 closeBracket :: Word8
-closeBracket = 93
+closeBracket = S.index "]" 0
 
--- {
 openBrace :: Word8
-openBrace = 123
+openBrace = S.index "{" 0
 
 closeBrace :: Word8
-closeBrace = 125
+closeBrace = S.index "}" 0
 
 --------------------------------------------------------------------------------
 
