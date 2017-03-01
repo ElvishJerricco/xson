@@ -2,7 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ViewPatterns        #-}
 
-module Lib where
+module Data.Xson where
 
 import           Control.Monad.State.Strict
 import           Data.Aeson                 (Value)

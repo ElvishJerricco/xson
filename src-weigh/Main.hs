@@ -5,7 +5,7 @@ import           Data.Aeson
 import qualified Data.ByteString      as ByteString
 import qualified Data.ByteString.Lazy as Lazy
 import           Data.Monoid          ((<>))
-import           Lib
+import           Data.Xson
 import           Weigh
 
 main :: IO ()

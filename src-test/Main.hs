@@ -10,7 +10,7 @@ import qualified Data.ByteString      as ByteString
 import qualified Data.ByteString.Lazy as Lazy
 import           Data.Maybe
 import           Data.These
-import           Lib                  (parse)
+import           Data.Xson            (parse)
 import           Test.Tasty
 import           Test.Tasty.HUnit
 -- import           Test.Tasty.QuickCheck
