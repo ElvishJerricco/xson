@@ -5,12 +5,12 @@ import           Control.Lens.Indexed
 import           Control.Monad
 import           Data.Aeson
 import           Data.Align
-import           Data.ByteString      (ByteString)
-import qualified Data.ByteString      as ByteString
+import           Data.ByteString (ByteString)
+import qualified Data.ByteString as ByteString
 import qualified Data.ByteString.Lazy as Lazy
 import           Data.Maybe
 import           Data.These
-import           Data.Xson            (parse)
+import           Data.Xson (parse)
 import           Test.Tasty
 import           Test.Tasty.HUnit
 -- import           Test.Tasty.QuickCheck

@@ -1,12 +1,12 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeApplications  #-}
+{-# LANGUAGE TypeApplications #-}
 
 import           Criterion
 import           Criterion.Main
 import           Data.Aeson
-import qualified Data.ByteString      as ByteString
+import qualified Data.ByteString as ByteString
 import qualified Data.ByteString.Lazy as Lazy
-import           Data.Monoid          ((<>))
+import           Data.Monoid ((<>))
 import           Data.Xson
 
 main :: IO ()

@@ -1,10 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TypeApplications  #-}
+{-# LANGUAGE TypeApplications #-}
 
 import           Data.Aeson
-import qualified Data.ByteString      as ByteString
+import qualified Data.ByteString as ByteString
 import qualified Data.ByteString.Lazy as Lazy
-import           Data.Monoid          ((<>))
+import           Data.Monoid ((<>))
 import           Data.Xson
 import           Weigh
 
