@@ -25,8 +25,6 @@ data Token
   = OpenObject
   | CloseObject
   | String ByteString
-  | Colon
-  | Comma
   | OpenArray
   | CloseArray
   | Number Scientific
@@ -45,8 +43,6 @@ tokenize handleToken str = go 0
       | x == closeBrace                         -> handleToken CloseObject *> go (index + 1)
       | x == openBracket                        -> handleToken OpenArray *> go (index + 1)
       | x == closeBracket                       -> handleToken CloseArray *> go (index + 1)
-      | x == comma                              -> handleToken Comma *> go (index + 1)
-      | x == colon                              -> handleToken Colon *> go (index + 1)
       | x == minusChar                          -> number negate (index + 1)
       | isNumberChar x                          -> number id index
       | S.isPrefixOf "true" (S.drop index str)  -> handleToken (Boolean True) *> go (index + 4)
@@ -150,9 +146,10 @@ parseNumber str = go 0
 -- Character types
 
 -- | The only valid whitespace in a JSON document is space, newline,
--- carriage return, and tab.
+-- carriage return, and tab. However, commas and colons can be treated
+-- as whitespace if your parser recognizes as such.
 isSpaceChar :: Word8 -> Bool
-isSpaceChar c = c == 0x20 || c == 0x0a || c == 0x0d || c == 0x09
+isSpaceChar c = c == 0x20 || c == 0x0a || c == 0x0d || c == 0x09 || c == 0x2C || c == 0x3A
 {-# INLINE isSpaceChar #-}
 
 isNumberChar :: Word8 -> Bool
@@ -175,12 +172,6 @@ period = S.index "." 0
 
 doubleQuote :: Word8
 doubleQuote = S.index "\"" 0
-
-comma :: Word8
-comma = S.index "," 0
-
-colon :: Word8
-colon = S.index ":" 0
 
 escapeSlash :: Word8
 escapeSlash = S.index "\\" 0
@@ -239,20 +230,14 @@ type ObjectDone = HashMap Text Value -> PState
 
 data ObjectState
   = ObjectKey
-  | ObjectColon !Text
   | ObjectValue !Text
-  | ObjectComma
 
 type ArrayDone = [Value] -> PState
-
-data ArrayState
-  = ArrayValue
-  | ArrayComma
 
 data PState
   = Start
   | Done !Value
-  | PArray !ArrayState !ArrayDone
+  | PArray !ArrayDone
   | PObject !ObjectState !ObjectDone
 
 parseTokens :: Token -> State PState ()
@@ -260,54 +245,36 @@ parseTokens = modify' . nextPState
 
 nextPState :: Token -> PState -> PState
 nextPState tok Start                            = startPState tok
-nextPState _   (Done _                        ) = error "Done"
-nextPState tok (PArray  ArrayValue        done) = nextArrayValue done tok
-nextPState tok (PArray  ArrayComma        done) = nextArrayComma done tok
+nextPState _   (Done   _                      ) = error "Done"
+nextPState tok (PArray done                   ) = nextArrayValue done tok
 nextPState tok (PObject ObjectKey         done) = nextObjectKey done tok
-nextPState tok (PObject (ObjectColon key) done) = nextObjectColon done key tok
 nextPState tok (PObject (ObjectValue key) done) = nextObjectValue done key tok
-nextPState tok (PObject ObjectComma       done) = nextObjectComma done tok
 
 startPState :: Token -> PState
-startPState OpenArray           = PArray ArrayValue (Done . doneArray)
+startPState OpenArray           = PArray (Done . doneArray)
 startPState OpenObject          = PObject ObjectKey (Done . Aeson.Object)
 startPState (primVal -> Just v) = Done v
 startPState _                   = error "Expected value"
 
 nextArrayValue :: ArrayDone -> Token -> PState
-nextArrayValue done OpenArray = PArray ArrayValue $ \v -> PArray ArrayComma (done . (doneArray v:))
-nextArrayValue done OpenObject =
-  PObject ObjectKey $ \v -> PArray ArrayComma (done . (Aeson.Object v:))
+nextArrayValue done OpenArray           = PArray $ \v -> PArray (done . (doneArray v:))
+nextArrayValue done OpenObject = PObject ObjectKey $ \v -> PArray (done . (Aeson.Object v:))
 nextArrayValue done CloseArray          = done []
-nextArrayValue done (primVal -> Just v) = PArray ArrayComma (done . (v:))
+nextArrayValue done (primVal -> Just v) = PArray (done . (v:))
 nextArrayValue _    _                   = error "Expected value"
 
-nextArrayComma :: ArrayDone -> Token -> PState
-nextArrayComma done Comma      = PArray ArrayValue done
-nextArrayComma done CloseArray = done []
-nextArrayComma _    _          = error "Expected comma"
-
 nextObjectKey :: ObjectDone -> Token -> PState
-nextObjectKey done (String str) = PObject (ObjectColon (Text.decodeUtf8 str)) done
+nextObjectKey done (String str) = PObject (ObjectValue (Text.decodeUtf8 str)) done
 nextObjectKey done CloseObject  = done HashMap.empty
 nextObjectKey _    _            = error "Expected object key or close"
 
-nextObjectColon :: ObjectDone -> Text -> Token -> PState
-nextObjectColon done key Colon = PObject (ObjectValue key) done
-nextObjectColon _    _   _     = error "Expected colon"
-
 nextObjectValue :: ObjectDone -> Text -> Token -> PState
 nextObjectValue done key OpenArray =
-  PArray ArrayValue $ \v -> PObject ObjectComma (done . HashMap.insert key (doneArray v))
+  PArray $ \v -> PObject ObjectKey (done . HashMap.insert key (doneArray v))
 nextObjectValue done key OpenObject =
-  PObject ObjectKey $ \v -> PObject ObjectComma (done . HashMap.insert key (Aeson.Object v))
-nextObjectValue done key (primVal -> Just v) = PObject ObjectComma (done . HashMap.insert key v)
+  PObject ObjectKey $ \v -> PObject ObjectKey (done . HashMap.insert key (Aeson.Object v))
+nextObjectValue done key (primVal -> Just v) = PObject ObjectKey (done . HashMap.insert key v)
 nextObjectValue _    _   _                   = error "Expected value"
-
-nextObjectComma :: ObjectDone -> Token -> PState
-nextObjectComma done Comma       = PObject ObjectKey done
-nextObjectComma done CloseObject = done HashMap.empty
-nextObjectComma _    _           = error "Expected comma or close object"
 
 primVal :: Token -> Maybe Value
 primVal (String  str) = Just (Aeson.String (Text.decodeUtf8 str))
