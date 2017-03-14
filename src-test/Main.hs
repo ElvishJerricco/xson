@@ -5,40 +5,45 @@ import           Control.Lens.Indexed
 import           Control.Monad
 import           Data.Aeson
 import           Data.Align
-import           Data.ByteString (ByteString)
-import qualified Data.ByteString as ByteString
-import qualified Data.ByteString.Lazy as Lazy
+import qualified Data.ByteString.Lazy as ByteString
 import           Data.Maybe
 import           Data.These
-import           Data.Xson (parse)
+import           Data.Xson (parse, parseST)
 import           Test.Tasty
 import           Test.Tasty.HUnit
 -- import           Test.Tasty.QuickCheck
 
 main :: IO ()
 main = do
-  aer     <- ByteString.readFile "AER-x.json"
-  allSets <- ByteString.readFile "AllSetsArray-x.json"
-  defaultMain $ testGroup "all-tests" (tests aer allSets)
+  defaultMain $ testGroup "all-tests" tests
 
-tests :: ByteString -> ByteString -> [TestTree]
-tests aer allSets =
-  [ testGroup "QuickCheck"   qcTests
-  , testGroup "Aeson checks" (huTests aer allSets)
-  ]
+tests :: [TestTree]
+tests = [testGroup "QuickCheck" qcTests, testGroup "Aeson checks" huTests]
 
 qcTests :: [TestTree]
 qcTests = [] -- TODO
 
-huTests :: ByteString -> ByteString -> [TestTree]
-huTests aer allSets =
-  [testCase "AER" (aesonCheck aer), testCase "All Sets" (aesonCheck allSets)]
+huTests :: [TestTree]
+huTests =
+  [ testCase "AER"         (aesonCheck "AER-x.json")
+  , testCase "All Sets"    (aesonCheck "AllSetsArray-x.json")
+  , testCase "AER ST"      (aesonCheckST "AER-x.json")
+  , testCase "All Sets ST" (aesonCheckST "AllSetsArray-x.json")
+  ]
 
-aesonCheck :: ByteString -> Assertion
-aesonCheck str =
-  assertString
-    $ fromMaybe "" -- use 'intercalate "\n"' instead to see all diffs
-    $ valueDiffMsg (Just (parse str)) (decode (Lazy.fromStrict str))
+aesonCheck :: FilePath -> Assertion
+aesonCheck path = do
+  xsonStr  <- ByteString.readFile path
+  aesonStr <- ByteString.readFile path
+  -- use 'intercalate "\n"' instead of 'fromMaybe ""' to see all diffs
+  assertString $ fromMaybe "" $ valueDiffMsg (parse xsonStr) (decode aesonStr)
+
+aesonCheckST :: FilePath -> Assertion
+aesonCheckST path = do
+  xsonStr  <- ByteString.readFile path
+  aesonStr <- ByteString.readFile path
+  -- use 'intercalate "\n"' instead of 'fromMaybe ""' to see all diffs
+  assertString $ fromMaybe "" $ valueDiffMsg (parseST xsonStr) (decode aesonStr)
 
 --------------------------------------------------------------------------------
 -- Utils
@@ -76,10 +81,8 @@ valueDiffMsg (Just lhs) (Just rhs) = go 0 lhs rhs
     -> f String
   diffAlign tab x y =
     let
-      f i (These a b)
-        = fmap ((replicate tab ' ' ++ "At: " ++ show i ++ "\n")++)
-               (go (tab + 1) a b)
-      f i (This _) = pure $ "Index [" ++ show i ++ "] not present in RHS"
-      f i (That _) = pure $ "Index [" ++ show i ++ "] not present in LHS"
+      f i (These a b) = fmap ((replicate tab ' ' ++ "At: " ++ show i ++ "\n")++) (go (tab + 1) a b)
+      f i (This _   ) = pure $ "Index [" ++ show i ++ "] not present in RHS"
+      f i (That _   ) = pure $ "Index [" ++ show i ++ "] not present in LHS"
     in
       ifoldr (\i a acc -> acc <|> f i a) empty (align x y)

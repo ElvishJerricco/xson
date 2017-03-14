@@ -4,22 +4,23 @@
 
 module Data.Xson where
 
+import           Control.Monad.ST
 import           Control.Monad.State.Strict
 import           Data.Aeson (Value)
 import qualified Data.Aeson as Aeson
 import           Data.ByteString (ByteString)
 import qualified Data.ByteString as S
+import qualified Data.ByteString.Lazy as L
 import           Data.Functor.Identity
 import           Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
+import           Data.Monoid ((<>))
+import           Data.STRef.Strict
 import           Data.Scientific
 import           Data.Text (Text)
 import qualified Data.Text.Encoding as Text
 import qualified Data.Vector as Vector
 import           Data.Word
-
-import           Control.Monad.ST
-import           Data.STRef.Strict
 
 data Token
   = OpenObject
@@ -32,7 +33,12 @@ data Token
   | Null
   deriving (Show, Ord, Eq)
 
-tokenize :: forall f . Applicative f => (Token -> f ()) -> ByteString -> f ()
+data TState
+  = UnexpectedToken
+  | NoClosingQuote
+  | MidNumber Scientific
+
+tokenize :: forall f . Applicative f => (Token -> f ()) -> ByteString -> f (Int, Maybe TState)
 tokenize handleToken str = go 0
  where
   go (skipSpaces str -> index) = case S.uncons (S.drop index str) of
@@ -43,50 +49,54 @@ tokenize handleToken str = go 0
       | x == closeBrace                         -> handleToken CloseObject *> go (index + 1)
       | x == openBracket                        -> handleToken OpenArray *> go (index + 1)
       | x == closeBracket                       -> handleToken CloseArray *> go (index + 1)
-      | x == minusChar                          -> number negate (index + 1)
-      | isNumberChar x                          -> number id index
+      | x == minusChar                          -> number index negate (index + 1)
+      | isNumberChar x                          -> number index id index
       | S.isPrefixOf "true" (S.drop index str)  -> handleToken (Boolean True) *> go (index + 4)
       | S.isPrefixOf "false" (S.drop index str) -> handleToken (Boolean False) *> go (index + 4)
       | S.isPrefixOf "null" (S.drop index str)  -> handleToken Null *> go (index + 4)
-      | otherwise -> error ("broke " ++ show (substring str (index - 5) (index + 10)))
-    _ -> pure ()
+      | otherwise                               -> pure (index, Just UnexpectedToken)
+    _ -> pure (index, Nothing)
   -- 'start' is the index of the opening quote.
   -- 'index' is the index to start searching at.
   -- 'index' advances with each escaped quote found.
   findClosingQuote start index = case elemIndexFrom doubleQuote str index of
-    Nothing     -> error "close"
+    Nothing     -> pure (start, Just NoClosingQuote)
     Just index' -> if isEscaped index'
       then findClosingQuote start (index' + 1)
       else handleToken (String (escaped $ substring str (start + 1) index')) *> go (index' + 1)
   -- TODO: Maybe make this tail call itself?
   isEscaped index =
     let x = S.index str (index - 1) in x == escapeSlash && not (isEscaped (index - 1))
-  number :: (Integer -> Integer) -> Int -> f ()
-  number sign index = let (int, index') = parseNumber str index in decimal sign int index'
-  decimal :: (Integer -> Integer) -> Integer -> Int -> f ()
-  decimal sign int index = case S.uncons (S.drop index str) of
+  number :: Int -> (Integer -> Integer) -> Int -> f (Int, Maybe TState)
+  number start sign index =
+    let (int, index') = parseNumber str index in decimal start sign int index'
+  decimal :: Int -> (Integer -> Integer) -> Integer -> Int -> f (Int, Maybe TState)
+  decimal start sign int index = case S.uncons (S.drop index str) of
     Just (x, _) | x == period ->
       let (dec, index') = parseNumber str (index + 1)
           e             = index' - (index + 1)
-      in  expon (sign (int * 10 ^ e + dec)) (-e) index'
-    _ -> expon (sign int) 0 index
-  expon :: Integer -> Int -> Int -> f ()
-  expon n e index = case S.uncons (S.drop index str) of
-    Just (x, _) | isExponent x ->
-      let (e', index') = parseNumber str (index + 1) :: (Int, Int)
-      in  handleToken (Number (scientific n (e + e'))) *> go index'
-    _ -> handleToken (Number (scientific n e)) *> go index
+      in  expon start (sign (int * 10 ^ e + dec)) (-e) index'
+    _ -> expon start (sign int) 0 index
+  expon :: Int -> Integer -> Int -> Int -> f (Int, Maybe TState)
+  expon start n e index =
+    let (sci, index') = case S.uncons (S.drop index str) of
+          Just (x, _) | isExponent x ->
+            let (e', i) = parseNumber str (index + 1) :: (Int, Int) in (scientific n (e + e'), i)
+          _ -> (scientific n e, index)
+    in  if index' == S.length str
+          then pure (start, Just $ MidNumber sci)
+          else handleToken (Number sci) *> go index'
 {-# INLINE tokenize #-}
-{-# SPECIALIZE tokenize :: (Token -> Identity ()) -> ByteString -> Identity () #-}
-{-# SPECIALIZE tokenize :: (Token -> IO ()) -> ByteString -> IO () #-}
-{-# SPECIALIZE tokenize :: (Token -> State s ()) -> ByteString -> State s () #-}
-{-# SPECIALIZE tokenize :: (Token -> ST s ()) -> ByteString -> ST s () #-}
+{-# SPECIALIZE tokenize :: (Token -> Identity ()) -> ByteString -> Identity (Int, Maybe TState) #-}
+{-# SPECIALIZE tokenize :: (Token -> IO ()) -> ByteString -> IO (Int, Maybe TState) #-}
+{-# SPECIALIZE tokenize :: (Token -> State s ()) -> ByteString -> State s (Int, Maybe TState) #-}
+{-# SPECIALIZE tokenize :: (Token -> ST s ()) -> ByteString -> ST s (Int, Maybe TState) #-}
 
-tokenize' :: ByteString -> ()
+tokenize' :: ByteString -> (Int, Maybe TState)
 tokenize' str = runIdentity $ tokenize (const (pure ())) str
 {-# NOINLINE tokenize' #-}
 
-tokenize'' :: ByteString -> IO ()
+tokenize'' :: ByteString -> IO (Int, Maybe TState)
 tokenize'' = tokenize print
 {-# NOINLINE tokenize'' #-}
 
@@ -239,34 +249,36 @@ data PState
   | Done !Value
   | PArray !ArrayDone
   | PObject !ObjectState !ObjectDone
+  | PError !Text
 
 parseTokens :: Token -> State PState ()
 parseTokens = modify' . nextPState
 
 nextPState :: Token -> PState -> PState
 nextPState tok Start                            = startPState tok
-nextPState _   (Done   _                      ) = error "Done"
+nextPState _   (Done   _                      ) = PError "Done"
 nextPState tok (PArray done                   ) = nextArrayValue done tok
 nextPState tok (PObject ObjectKey         done) = nextObjectKey done tok
 nextPState tok (PObject (ObjectValue key) done) = nextObjectValue done key tok
+nextPState _   (PError err                    ) = PError err
 
 startPState :: Token -> PState
 startPState OpenArray           = PArray (Done . doneArray)
 startPState OpenObject          = PObject ObjectKey (Done . Aeson.Object)
 startPState (primVal -> Just v) = Done v
-startPState _                   = error "Expected value"
+startPState _                   = PError "Expected value"
 
 nextArrayValue :: ArrayDone -> Token -> PState
 nextArrayValue done OpenArray           = PArray $ \v -> PArray (done . (doneArray v:))
 nextArrayValue done OpenObject = PObject ObjectKey $ \v -> PArray (done . (Aeson.Object v:))
 nextArrayValue done CloseArray          = done []
 nextArrayValue done (primVal -> Just v) = PArray (done . (v:))
-nextArrayValue _    _                   = error "Expected value"
+nextArrayValue _    _                   = PError "Expected value"
 
 nextObjectKey :: ObjectDone -> Token -> PState
 nextObjectKey done (String str) = PObject (ObjectValue (Text.decodeUtf8 str)) done
 nextObjectKey done CloseObject  = done HashMap.empty
-nextObjectKey _    _            = error "Expected object key or close"
+nextObjectKey _    _            = PError "Expected object key or close"
 
 nextObjectValue :: ObjectDone -> Text -> Token -> PState
 nextObjectValue done key OpenArray =
@@ -274,7 +286,7 @@ nextObjectValue done key OpenArray =
 nextObjectValue done key OpenObject =
   PObject ObjectKey $ \v -> PObject ObjectKey (done . HashMap.insert key (Aeson.Object v))
 nextObjectValue done key (primVal -> Just v) = PObject ObjectKey (done . HashMap.insert key v)
-nextObjectValue _    _   _                   = error "Expected value"
+nextObjectValue _    _   _                   = PError "Expected value"
 
 primVal :: Token -> Maybe Value
 primVal (String  str) = Just (Aeson.String (Text.decodeUtf8 str))
@@ -288,13 +300,46 @@ doneArray = Aeson.Array . Vector.fromList
 
 --------------------------------------------------------------------------------
 
-parse :: ByteString -> Value
-parse str = let Done v = execState (tokenize parseTokens str) Start in v
-{-# NOINLINE parse #-}
+parseResumable :: ByteString -> PState -> (Int, PState, Maybe TState)
+parseResumable str = evalState st
+ where
+  st = do
+    (i, tstate) <- tokenize parseTokens str
+    pstate      <- get
+    return (i, pstate, tstate)
 
-parseST :: ByteString -> Value
+parseSTResumable :: ByteString -> PState -> (Int, PState, Maybe TState)
+parseSTResumable str start = runST $ do
+  ref         <- newSTRef start
+  (i, tstate) <- tokenize (modifySTRef' ref . nextPState) str
+  pstate      <- readSTRef ref
+  return (i, pstate, tstate)
+
+parseWithStateMachine :: Monad m => (Token -> m ()) -> m PState -> L.ByteString -> m (Maybe Value)
+parseWithStateMachine next current str = do
+  let op s x (startWith, _) = do
+        let s' = startWith <> s
+        (i, tstate) <- tokenize next s'
+        x (S.drop i s', tstate)
+  (_, tstate) <- L.foldrChunks op return str ("", Nothing)
+  case tstate of
+    Nothing              -> do
+      pstate <- current
+      case pstate of
+        Done v -> return (Just v)
+        _      -> return Nothing
+    Just (MidNumber sci) -> do
+      next (Number sci)
+      pstate <- current
+      case pstate of
+        Done v -> return (Just v)
+        _      -> return Nothing
+    Just _               -> return Nothing
+
+parse :: L.ByteString -> Maybe Value
+parse str = flip evalState Start $ parseWithStateMachine parseTokens get str
+
+parseST :: L.ByteString -> Maybe Value
 parseST str = runST $ do
   ref <- newSTRef Start
-  tokenize (modifySTRef' ref . nextPState) str
-  Done v <- readSTRef ref
-  return v
+  parseWithStateMachine (modifySTRef' ref . nextPState) (readSTRef ref) str

@@ -4,24 +4,21 @@
 import           Criterion
 import           Criterion.Main
 import           Data.Aeson
-import qualified Data.ByteString as ByteString
-import qualified Data.ByteString.Lazy as Lazy
+import qualified Data.ByteString.Lazy as L
 import           Data.Monoid ((<>))
 import           Data.Xson
 
 main :: IO ()
 main = do
-  aer     <- ByteString.readFile "AER-x.json"
-  allSets <- ByteString.readFile "AllSetsArray-x.json"
-  let slash = "\"" <> ByteString.pack (replicate 100000 escapeSlash) <> "\""
+  let slash = "\"" <> L.pack (replicate 100000 escapeSlash) <> "\""
   defaultMain
-    [ bench "xson-aer"        (nf parse aer)
-    , bench "xson-aer-ST"     (nf parseST aer)
-    , bench "aeson-aer"       (nf (decode @Value) (Lazy.fromStrict aer))
-    , bench "xson-allSets"    (nf parse allSets)
-    , bench "xson-allSets-ST" (nf parseST allSets)
-    , bench "aeson-allSets"   (nf (decode @Value) (Lazy.fromStrict allSets))
+    [ bench "xson-aer"        (nfIO $ fmap parse (L.readFile "AER-x.json"))
+    , bench "xson-aer-ST"     (nfIO $ fmap parseST (L.readFile "AER-x.json"))
+    , bench "aeson-aer"       (nfIO $ fmap (decode @Value) (L.readFile "AER-x.json"))
+    , bench "xson-allSets"    (nfIO $ fmap parse (L.readFile "AllSetsArray-x.json"))
+    , bench "xson-allSets-ST" (nfIO $ fmap parseST (L.readFile "AllSetsArray-x.json"))
+    , bench "aeson-allSets"   (nfIO $ fmap (decode @Value) (L.readFile "AllSetsArray-x.json"))
     , bench "xson-slash"      (nf parse slash)
     , bench "xson-slash-ST"   (nf parseST slash)
-    , bench "aeson-slash"     (nf (decode @Value) (Lazy.fromStrict slash))
+    , bench "aeson-slash"     (nf (decode @Value) slash)
     ]
