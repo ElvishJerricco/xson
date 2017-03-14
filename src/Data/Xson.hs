@@ -21,6 +21,9 @@ import qualified Data.Text.Encoding as Text
 import qualified Data.Vector as Vector
 import           Data.Word
 
+-- | A semantic token of JSON. Commas and colons are not included, as
+-- they are semantically meaningless to the parser. Strings are
+-- pre-escaped.
 data Token
   = OpenObject
   | CloseObject
@@ -32,11 +35,36 @@ data Token
   | Null
   deriving (Show, Ord, Eq)
 
+-- | After tokenizing a chunk, the tokenizer is left in one of a few
+-- states. Mostly, these are error states, possibly due to a token
+-- crossing the chunk boundary. But it's impossible to tell whether
+-- numbers that cross the chunk boundary are done or not, if you can't
+-- see the next chunk. So we use a tokenizer state to indicate that
+-- the number token might either be done, or crossing a chunk.
 data TState
   = UnexpectedToken
   | NoClosingQuote
   | MidNumber Scientific
 
+-- | This takes a chunk of JSON and spits out tokens to the callback
+-- function. It operates on chunks of JSON, allowing the data to be
+-- streamed in piece by piece, instead of all at once. If a token is
+-- incomplete and crosses the chunk boundary, the index of the start
+-- of that token is returned, and the relevant 'TState' is
+-- returned. The parsing phase should append the bytes from that index
+-- onward to the beginning of the next chunk, in order to get that
+-- token correctly.
+--
+-- This tokenizer makes it possible to create your own parsing state
+-- machine, bypassing the 'Value' intermediate value entirely. This
+-- improve the performance drastically.
+--
+-- TODO: Currently string escaping and number parsing are the slowest
+-- parts of this (they are the only reason the tokenizer doesn't run
+-- with zero GCs). It'd be good to find an effective way to batch and
+-- paralellize them. This might involve recognizing numbers into
+-- bytestrings rather than parsing them in the tokenizer, and having
+-- the parser parse them into actual numbers.
 tokenize :: forall f . Applicative f => (Token -> f ()) -> ByteString -> f (Int, Maybe TState)
 tokenize handleToken str = go 0
  where
@@ -224,6 +252,7 @@ uChar :: Word8
 uChar = S.index "u" 0
 
 --------------------------------------------------------------------------------
+-- A state machine for parsing 'Value'
 
 type ObjectDone = HashMap Text Value -> PState
 
@@ -285,7 +314,10 @@ doneArray :: [Value] -> Value
 doneArray = Aeson.Array . Vector.fromList
 
 --------------------------------------------------------------------------------
+-- Parsers
 
+-- | Parse a 'Value' using a state machine. This exists primarily so
+-- that 'parse' and 'parseST' can share the same logic.
 parseWithStateMachine :: Monad m => (Token -> m ()) -> m PState -> L.ByteString -> m (Maybe Value)
 parseWithStateMachine next current str = do
   let op s x (startWith, _) = do
@@ -307,9 +339,15 @@ parseWithStateMachine next current str = do
         _      -> return Nothing
     Just _               -> return Nothing
 
+-- | Parse a 'Value' using the 'State' based state machine. A lazy
+-- bytestring is used as input so that chunks of input can be streamed
+-- in rather than loading the entire input up front.
 parse :: L.ByteString -> Maybe Value
 parse str = flip evalState Start $ parseWithStateMachine (modify' . nextPState) get str
 
+-- | Parse a 'Value' using the 'ST' based state machine. A lazy
+-- bytestring is used as input so that chunks of input can be streamed
+-- in rather than loading the entire input up front.
 parseST :: L.ByteString -> Maybe Value
 parseST str = runST $ do
   ref <- newSTRef Start
