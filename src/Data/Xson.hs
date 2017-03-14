@@ -11,7 +11,6 @@ import qualified Data.Aeson as Aeson
 import           Data.ByteString (ByteString)
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Lazy as L
-import           Data.Functor.Identity
 import           Data.HashMap.Lazy (HashMap)
 import qualified Data.HashMap.Lazy as HashMap
 import           Data.Monoid ((<>))
@@ -87,18 +86,8 @@ tokenize handleToken str = go 0
           then pure (start, Just $ MidNumber sci)
           else handleToken (Number sci) *> go index'
 {-# INLINE tokenize #-}
-{-# SPECIALIZE tokenize :: (Token -> Identity ()) -> ByteString -> Identity (Int, Maybe TState) #-}
-{-# SPECIALIZE tokenize :: (Token -> IO ()) -> ByteString -> IO (Int, Maybe TState) #-}
 {-# SPECIALIZE tokenize :: (Token -> State s ()) -> ByteString -> State s (Int, Maybe TState) #-}
 {-# SPECIALIZE tokenize :: (Token -> ST s ()) -> ByteString -> ST s (Int, Maybe TState) #-}
-
-tokenize' :: ByteString -> (Int, Maybe TState)
-tokenize' str = runIdentity $ tokenize (const (pure ())) str
-{-# NOINLINE tokenize' #-}
-
-tokenize'' :: ByteString -> IO (Int, Maybe TState)
-tokenize'' = tokenize print
-{-# NOINLINE tokenize'' #-}
 
 --------------------------------------------------------------------------------
 -- ByteString utilities
@@ -251,9 +240,6 @@ data PState
   | PObject !ObjectState !ObjectDone
   | PError !Text
 
-parseTokens :: Token -> State PState ()
-parseTokens = modify' . nextPState
-
 nextPState :: Token -> PState -> PState
 nextPState tok Start                            = startPState tok
 nextPState _   (Done   _                      ) = PError "Done"
@@ -300,21 +286,6 @@ doneArray = Aeson.Array . Vector.fromList
 
 --------------------------------------------------------------------------------
 
-parseResumable :: ByteString -> PState -> (Int, PState, Maybe TState)
-parseResumable str = evalState st
- where
-  st = do
-    (i, tstate) <- tokenize parseTokens str
-    pstate      <- get
-    return (i, pstate, tstate)
-
-parseSTResumable :: ByteString -> PState -> (Int, PState, Maybe TState)
-parseSTResumable str start = runST $ do
-  ref         <- newSTRef start
-  (i, tstate) <- tokenize (modifySTRef' ref . nextPState) str
-  pstate      <- readSTRef ref
-  return (i, pstate, tstate)
-
 parseWithStateMachine :: Monad m => (Token -> m ()) -> m PState -> L.ByteString -> m (Maybe Value)
 parseWithStateMachine next current str = do
   let op s x (startWith, _) = do
@@ -337,7 +308,7 @@ parseWithStateMachine next current str = do
     Just _               -> return Nothing
 
 parse :: L.ByteString -> Maybe Value
-parse str = flip evalState Start $ parseWithStateMachine parseTokens get str
+parse str = flip evalState Start $ parseWithStateMachine (modify' . nextPState) get str
 
 parseST :: L.ByteString -> Maybe Value
 parseST str = runST $ do
