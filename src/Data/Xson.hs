@@ -192,64 +192,84 @@ isExponent x = x == 69 || x == 101
 {-# INLINE isExponent #-}
 
 minusChar :: Word8
-minusChar = S.index "-" 0
+minusChar = 0x2D
+{-# INLINE minusChar #-}
 
 period :: Word8
-period = S.index "." 0
+period = 0x2E
+{-# INLINE period #-}
 
 doubleQuote :: Word8
-doubleQuote = S.index "\"" 0
+doubleQuote = 0x22
+{-# INLINE doubleQuote #-}
 
 escapeSlash :: Word8
-escapeSlash = S.index "\\" 0
+escapeSlash = 0x5C
+{-# INLINE escapeSlash #-}
 
 openBracket :: Word8
-openBracket = S.index "[" 0
+openBracket = 0x5B
+{-# INLINE openBracket #-}
 
 closeBracket :: Word8
-closeBracket = S.index "]" 0
+closeBracket = 0x5D
+{-# INLINE closeBracket #-}
 
 openBrace :: Word8
-openBrace = S.index "{" 0
+openBrace = 0x7B
+{-# INLINE openBrace #-}
 
 closeBrace :: Word8
-closeBrace = S.index "}" 0
+closeBrace = 0x7D
+{-# INLINE closeBrace #-}
 
 forwardSlash :: Word8
-forwardSlash = S.index "/" 0
+forwardSlash = 0x2F
+{-# INLINE forwardSlash #-}
 
 bChar :: Word8
-bChar = S.index "b" 0
+bChar = 0x62
+{-# INLINE bChar #-}
 
 backspace :: Word8
-backspace = S.index "\b" 0
+backspace = 0x08
+{-# INLINE backspace #-}
 
 fChar :: Word8
-fChar = S.index "f" 0
+fChar = 0x66
+{-# INLINE fChar #-}
 
 formFeed :: Word8
-formFeed = S.index "\f" 0
+formFeed = 0x0C
+{-# INLINE formFeed #-}
 
 nChar :: Word8
-nChar = S.index "n" 0
+nChar = 0x6E
+{-# INLINE nChar #-}
 
 newLine :: Word8
-newLine = S.index "\n" 0
+newLine = 0x0A
+{-# INLINE newLine #-}
 
 rChar :: Word8
-rChar = S.index "r" 0
+rChar = 0x72
+{-# INLINE rChar #-}
 
 carriageReturn :: Word8
-carriageReturn = S.index "\r" 0
+carriageReturn = 0x0D
+{-# INLINE carriageReturn #-}
 
 tChar :: Word8
-tChar = S.index "t" 0
+tChar = 0x74
+{-# INLINE tChar #-}
 
 tabChar :: Word8
-tabChar = S.index "\t" 0
+tabChar = 0x09
+{-# INLINE tabChar #-}
 
 uChar :: Word8
-uChar = S.index "u" 0
+uChar = 0x75
+{-# INLINE uChar #-}
 
 --------------------------------------------------------------------------------
 -- A state machine for parsing 'Value'
@@ -316,39 +336,47 @@ doneArray = Aeson.Array . Vector.fromList
 --------------------------------------------------------------------------------
 -- Parsers
 
--- | Parse a 'Value' using a state machine. This exists primarily so
--- that 'parse' and 'parseST' can share the same logic.
-parseWithStateMachine :: Monad m => (Token -> m ()) -> m PState -> L.ByteString -> m (Maybe Value)
-parseWithStateMachine next current str = do
+-- | Parse a 'Value' using a state machine. Will return the
+-- tokenizer's state after the last chunk. If the tokenizer's state is
+-- 'MidNumber', this is not returned, and a 'Number' token is
+-- propagated instead.
+parseWithStateMachine :: Monad m => (Token -> m ()) -> L.ByteString -> m (Maybe TState)
+parseWithStateMachine next str = do
   let op s x (startWith, _) = do
         let s' = startWith <> s
         (i, tstate) <- tokenize next s'
         x (S.drop i s', tstate)
   (_, tstate) <- L.foldrChunks op return str ("", Nothing)
   case tstate of
-    Nothing              -> do
-      pstate <- current
-      case pstate of
-        Done v -> return (Just v)
-        _      -> return Nothing
     Just (MidNumber sci) -> do
       next (Number sci)
-      pstate <- current
-      case pstate of
-        Done v -> return (Just v)
-        _      -> return Nothing
-    Just _               -> return Nothing
+      return Nothing
+    _                    -> return tstate
+{-# INLINE parseWithStateMachine #-}
 
 -- | Parse a 'Value' using the 'State' based state machine. A lazy
 -- bytestring is used as input so that chunks of input can be streamed
 -- in rather than loading the entire input up front.
 parse :: L.ByteString -> Maybe Value
-parse str = flip evalState Start $ parseWithStateMachine (modify' . nextPState) get str
+parse str = flip evalState Start $ do
+  tstate <- parseWithStateMachine (modify' . nextPState) str
+  pstate <- get
+  case tstate of
+    Just _  -> return Nothing
+    Nothing -> case pstate of
+      Done v -> return (Just v)
+      _      -> return Nothing
 
 -- | Parse a 'Value' using the 'ST' based state machine. A lazy
 -- bytestring is used as input so that chunks of input can be streamed
 -- in rather than loading the entire input up front.
 parseST :: L.ByteString -> Maybe Value
 parseST str = runST $ do
-  ref <- newSTRef Start
-  parseWithStateMachine (modifySTRef' ref . nextPState) (readSTRef ref) str
+  ref    <- newSTRef Start
+  tstate <- parseWithStateMachine (modifySTRef' ref . nextPState) str
+  pstate <- readSTRef ref
+  case tstate of
+    Just _  -> return Nothing
+    Nothing -> case pstate of
+      Done v -> return (Just v)
+      _      -> return Nothing
