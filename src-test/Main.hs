@@ -5,10 +5,11 @@ import           Control.Lens.Indexed
 import           Control.Monad
 import           Data.Aeson
 import           Data.Align
-import qualified Data.ByteString.Lazy as ByteString
+import qualified Data.ByteString.Lazy as L
 import           Data.Maybe
 import           Data.These
 import           Data.Xson (parse, parseST)
+import qualified Data.Xson.FromJSON as X
 import           Test.Tasty
 import           Test.Tasty.HUnit
 -- import           Test.Tasty.QuickCheck
@@ -25,25 +26,20 @@ qcTests = [] -- TODO
 
 huTests :: [TestTree]
 huTests =
-  [ testCase "AER"         (aesonCheck "AER-x.json")
-  , testCase "All Sets"    (aesonCheck "AllSetsArray-x.json")
-  , testCase "AER ST"      (aesonCheckST "AER-x.json")
-  , testCase "All Sets ST" (aesonCheckST "AllSetsArray-x.json")
+  [ testCase "AER"               (aesonCheck parse "AER-x.json")
+  , testCase "All Sets"          (aesonCheck parse "AllSetsArray-x.json")
+  , testCase "AER ST"            (aesonCheck parseST "AER-x.json")
+  , testCase "All Sets ST"       (aesonCheck parseST "AllSetsArray-x.json")
+  , testCase "AER FromJSON"      (aesonCheck X.decode "AER-x.json")
+  , testCase "All Sets FromJSON" (aesonCheck X.decode "AllSetsArray-x.json")
   ]
 
-aesonCheck :: FilePath -> Assertion
-aesonCheck path = do
-  xsonStr  <- ByteString.readFile path
-  aesonStr <- ByteString.readFile path
+aesonCheck :: (L.ByteString -> Maybe Value) -> FilePath -> Assertion
+aesonCheck f path = do
+  xsonStr  <- L.readFile path
+  aesonStr <- L.readFile path
   -- use 'intercalate "\n"' instead of 'fromMaybe ""' to see all diffs
-  assertString $ fromMaybe "" $ valueDiffMsg (parse xsonStr) (decode aesonStr)
-
-aesonCheckST :: FilePath -> Assertion
-aesonCheckST path = do
-  xsonStr  <- ByteString.readFile path
-  aesonStr <- ByteString.readFile path
-  -- use 'intercalate "\n"' instead of 'fromMaybe ""' to see all diffs
-  assertString $ fromMaybe "" $ valueDiffMsg (parseST xsonStr) (decode aesonStr)
+  assertString $ fromMaybe "" $ valueDiffMsg (f xsonStr) (decode aesonStr)
 
 --------------------------------------------------------------------------------
 -- Utils
