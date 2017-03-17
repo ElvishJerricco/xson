@@ -58,15 +58,15 @@ instance FromJSON a => FromJSON [a] where
     loop f = do
       t <- await
       case t of
-        CloseArray -> return (f (Just []))
+        CloseArray -> return (Just (f []))
         _ -> do
           let yielder = do
                 yield t
                 forever $ yield =<< await
           a <- yielder >-> parseTokens
           case a of
-            Nothing -> return (f Nothing)
-            Just a' -> loop (f . fmap (a':))
+            Nothing -> return Nothing
+            Just a' -> loop (f . (a':))
   {-# INLINE parseTokens #-}
 
 instance FromJSON a => FromJSON (Vector a) where
