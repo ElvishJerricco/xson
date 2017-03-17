@@ -92,7 +92,7 @@ instance FromJSON a => FromJSON (HashMap Text a) where
   {-# INLINE parseTokens #-}
 
 instance FromJSON Value where
-  parseTokens = evalStateT (runMaybeT loop) Start
+  parseTokens = evalStateT (runMaybeT loop)Start
    where
     loop = do
       t <- MaybeT $ lift await

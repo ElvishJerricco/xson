@@ -26,5 +26,6 @@ nixself: nixsuper: {
       xson = callWithBench "xson" ../xson {};
       xson-pipes = callWithBench "xson-pipes" ../xson-pipes {};
       xson-conduit = callWithBench "xson-conduit" ../xson-conduit {};
+      xson-bench-test = lib.dontHaddock (callWithBench "xson-bench-test" ../xson-bench-test {});
     });
 }
