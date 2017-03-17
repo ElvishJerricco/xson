@@ -27,14 +27,10 @@ qcTests = [] -- TODO
 
 huTests :: [TestTree]
 huTests =
-  [ testCase "AER"              (aesonCheck parse "AER-x.json")
-  , testCase "All Sets"         (aesonCheck parse "AllSetsArray-x.json")
-  , testCase "AER ST"           (aesonCheck parseST "AER-x.json")
-  , testCase "All Sets ST"      (aesonCheck parseST "AllSetsArray-x.json")
-  , testCase "AER Pipes"        (aesonCheck P.decode "AER-x.json")
-  , testCase "All Sets Pipes"   (aesonCheck P.decode "AllSetsArray-x.json")
-  , testCase "AER Conduit"      (aesonCheck C.decode "AER-x.json")
-  , testCase "All Sets Conduit" (aesonCheck C.decode "AllSetsArray-x.json")
+  [ testCase "AER"         (aesonCheck parse "AER-x.json")
+  , testCase "AER ST"      (aesonCheck parseST "AER-x.json")
+  , testCase "AER Pipes"   (aesonCheck P.decode "AER-x.json")
+  , testCase "AER Conduit" (aesonCheck C.decode "AER-x.json")
   ]
 
 aesonCheck :: (L.ByteString -> Maybe Value) -> FilePath -> Assertion
