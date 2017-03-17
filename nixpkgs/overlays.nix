@@ -25,5 +25,6 @@ nixself: nixsuper: {
       # Local packages
       xson = callWithBench "xson" ../xson {};
       xson-pipes = callWithBench "xson-pipes" ../xson-pipes {};
+      xson-conduit = callWithBench "xson-conduit" ../xson-conduit {};
     });
 }

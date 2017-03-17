@@ -1,0 +1,7 @@
+nix:
+  enable: true
+  shell-file: shell.nix
+  packages: []
+resolver: ghc-8.0.2 # Doesn't matter. We're ignoring it.
+packages:
+- '.'
