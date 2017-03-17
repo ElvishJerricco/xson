@@ -6,9 +6,9 @@ module Data.Xson.FromJSON where
 
 import           Control.Applicative
 import           Control.Monad
+import           Control.Monad.State.Strict
 import           Control.Monad.Trans.Maybe
 import           Data.Aeson (Value)
-import qualified Data.Aeson as Aeson
 import qualified Data.ByteString.Lazy as L
 import           Data.Functor.Identity
 import           Data.HashMap.Lazy (HashMap)
@@ -91,20 +91,33 @@ instance FromJSON a => FromJSON (HashMap Text a) where
         _ -> empty
   {-# INLINE parseTokens #-}
 
+-- instance FromJSON Value where
+--   parseTokens = do
+--     t <- await
+--     let yielder = do
+--           yield t
+--           forever $ yield =<< await
+--     case t of
+--       OpenObject -> fmap Aeson.Object <$> (yielder >-> parseTokens)
+--       OpenArray -> fmap Aeson.Array <$> (yielder >-> parseTokens)
+--       String s -> return $ Aeson.String <$> either (const Nothing) Just (T.decodeUtf8' s)
+--       Number sci -> return (Just (Aeson.Number sci))
+--       Boolean b -> return (Just (Aeson.Bool b))
+--       Null -> return (Just Aeson.Null)
+--       _ -> return Nothing
+--   {-# INLINE parseTokens #-}
+
 instance FromJSON Value where
-  parseTokens = do
-    t <- await
-    let yielder = do
-          yield t
-          forever $ yield =<< await
-    case t of
-      OpenObject -> fmap Aeson.Object <$> (yielder >-> parseTokens)
-      OpenArray -> fmap Aeson.Array <$> (yielder >-> parseTokens)
-      String s -> return $ Aeson.String <$> either (const Nothing) Just (T.decodeUtf8' s)
-      Number sci -> return (Just (Aeson.Number sci))
-      Boolean b -> return (Just (Aeson.Bool b))
-      Null -> return (Just Aeson.Null)
-      _ -> return Nothing
+  parseTokens = evalStateT loop Start
+   where
+    loop = do
+      t <- lift await
+      modify' (nextPState t)
+      pstate <- get
+      case pstate of
+        Done v -> return (Just v)
+        PError _ -> return Nothing
+        _ -> loop
   {-# INLINE parseTokens #-}
 
 decode :: FromJSON a => L.ByteString -> Maybe a
