@@ -27,7 +27,6 @@ library
   ghc-options:       -Wall -O2
   hs-source-dirs:    src
   exposed-modules:   Data.Xson
-                   , Data.Xson.FromJSON
   build-depends:     base >= 4.8 && < 5
                    , bytestring
                    , scientific
@@ -36,7 +35,6 @@ library
                    , vector
                    , aeson
                    , mtl
-                   , pipes
                    , transformers
 
 test-suite xson-test

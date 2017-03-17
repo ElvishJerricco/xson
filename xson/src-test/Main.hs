@@ -9,7 +9,6 @@ import qualified Data.ByteString.Lazy as L
 import           Data.Maybe
 import           Data.These
 import           Data.Xson (parse, parseST)
-import qualified Data.Xson.FromJSON as X
 import           Test.Tasty
 import           Test.Tasty.HUnit
 -- import           Test.Tasty.QuickCheck
@@ -30,8 +29,6 @@ huTests =
   , testCase "All Sets"          (aesonCheck parse "AllSetsArray-x.json")
   , testCase "AER ST"            (aesonCheck parseST "AER-x.json")
   , testCase "All Sets ST"       (aesonCheck parseST "AllSetsArray-x.json")
-  , testCase "AER FromJSON"      (aesonCheck X.decode "AER-x.json")
-  , testCase "All Sets FromJSON" (aesonCheck X.decode "AllSetsArray-x.json")
   ]
 
 aesonCheck :: (L.ByteString -> Maybe Value) -> FilePath -> Assertion

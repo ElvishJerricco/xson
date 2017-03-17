@@ -1,8 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ViewPatterns #-}
 
-module Data.Xson.FromJSON where
+module Data.Xson.Pipes.FromJSON where
 
 import           Control.Applicative
 import           Control.Monad
@@ -44,7 +45,7 @@ instance FromJSON Text where
   parseTokens = do
     t <- await
     return $ case t of
-      String s -> either (const Nothing) Just $ T.decodeUtf8' s
+      String (T.decodeUtf8' -> Right s) -> Just s
       _ -> Nothing
   {-# INLINE parseTokens #-}
 
@@ -84,10 +85,9 @@ instance FromJSON a => FromJSON (HashMap Text a) where
       t <- await
       runMaybeT $ case t of
         CloseObject -> return as
-        String s -> do
+        String (T.decodeUtf8' -> Right s) -> do
           a <- MaybeT parseTokens
-          s' <- either (const empty) pure $ T.decodeUtf8' s
-          MaybeT $ loop $ Map.insert s' a as
+          MaybeT $ loop $ Map.insert s a as
         _ -> empty
   {-# INLINE parseTokens #-}
 
@@ -100,7 +100,7 @@ instance FromJSON a => FromJSON (HashMap Text a) where
 --     case t of
 --       OpenObject -> fmap Aeson.Object <$> (yielder >-> parseTokens)
 --       OpenArray -> fmap Aeson.Array <$> (yielder >-> parseTokens)
---       String s -> return $ Aeson.String <$> either (const Nothing) Just (T.decodeUtf8' s)
+--       String (T.decodeUtf8' -> Right s) -> return (Just (Aeson.String s))
 --       Number sci -> return (Just (Aeson.Number sci))
 --       Boolean b -> return (Just (Aeson.Bool b))
 --       Null -> return (Just Aeson.Null)
