@@ -9,6 +9,8 @@ import qualified Data.ByteString.Lazy as L
 import           Data.Maybe
 import           Data.These
 import           Data.Xson (parse, parseST)
+import qualified Data.Xson.Conduit.FromJSON as C
+import qualified Data.Xson.Pipes.FromJSON as P
 import           Test.Tasty
 import           Test.Tasty.HUnit
 -- import           Test.Tasty.QuickCheck
@@ -25,10 +27,14 @@ qcTests = [] -- TODO
 
 huTests :: [TestTree]
 huTests =
-  [ testCase "AER"               (aesonCheck parse "AER-x.json")
-  , testCase "All Sets"          (aesonCheck parse "AllSetsArray-x.json")
-  , testCase "AER ST"            (aesonCheck parseST "AER-x.json")
-  , testCase "All Sets ST"       (aesonCheck parseST "AllSetsArray-x.json")
+  [ testCase "AER"              (aesonCheck parse "AER-x.json")
+  , testCase "All Sets"         (aesonCheck parse "AllSetsArray-x.json")
+  , testCase "AER ST"           (aesonCheck parseST "AER-x.json")
+  , testCase "All Sets ST"      (aesonCheck parseST "AllSetsArray-x.json")
+  , testCase "AER Pipes"        (aesonCheck P.decode "AER-x.json")
+  , testCase "All Sets Pipes"   (aesonCheck P.decode "AllSetsArray-x.json")
+  , testCase "AER Conduit"      (aesonCheck C.decode "AER-x.json")
+  , testCase "All Sets Conduit" (aesonCheck C.decode "AllSetsArray-x.json")
   ]
 
 aesonCheck :: (L.ByteString -> Maybe Value) -> FilePath -> Assertion

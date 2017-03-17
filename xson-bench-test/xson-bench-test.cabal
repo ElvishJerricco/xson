@@ -23,6 +23,7 @@ source-repository head
   location: https://github.com/ElvishJerricco/xson
 
 library
+  default-language:  Haskell2010
 
 test-suite xson-test
   type:              exitcode-stdio-1.0
@@ -32,6 +33,8 @@ test-suite xson-test
   main-is:           Main.hs
   build-depends:     base >= 4.8 && < 5
                    , xson
+                   , xson-pipes
+                   , xson-conduit
                    , tasty >= 0.11
                    , tasty-hunit >= 0.9
                    -- , tasty-quickcheck >= 0.8
@@ -49,6 +52,8 @@ benchmark xson-benchmark-criterion
   build-depends:     base >= 4.8 && < 5
                    , criterion
                    , xson
+                   , xson-pipes
+                   , xson-conduit
                    , bytestring
                    , aeson
 
@@ -61,5 +66,7 @@ benchmark xson-benchmark-weigh
   build-depends:     base >= 4.8 && < 5
                    , weigh
                    , xson
+                   , xson-pipes
+                   , xson-conduit
                    , bytestring
                    , aeson
