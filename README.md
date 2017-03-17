@@ -170,3 +170,20 @@ xson-slash-pipes      1,266,363,952   2,335  OK
 xson-slash-conduit    1,266,359,008   2,335  OK   
 aeson-slash               5,495,488       9  OK   
 ```
+
+Contributing
+---
+
+This project can be built with either Nix or Stack. I previously tried
+to unify them and have Stack use the Nix configuration for Haskell
+dependencies. This worked, but requires contributors to be using
+Nix. In the end, I decided it was a better tradeoff to offer both, but
+have them completely disjoint. As such, Stack will not use Nix, and
+Nix will not use Stack. If you don't have or know Nix, no worries;
+it's not requried. Building is done as you would expect, using either
+`stack build` in the root directory, or `nix-build` in any of the
+package directories.
+
+I use [brittany](https://github.com/lspitzner/brittany) for automated
+formatting. It's fairly bleeding edge, so don't worry about it. I
+periodically run `brittany` on all the `.hs` files myself.
